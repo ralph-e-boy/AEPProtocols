@@ -1,0 +1,95 @@
+// swiftlint:disable vertical_whitespace
+
+<%_
+
+// sanitize function name input removing default values
+func sanitize(_ string: String) -> String {
+  // return original string if match doesn't happen
+  var returnValue = string
+  // regex for all parameters
+  let paramsRegex: NSRegularExpression = try! NSRegularExpression(
+    pattern:  #"(\()(.*)(\))"#,
+    options: []
+  )
+  let paramMatches = paramsRegex.matches( in: string, options: [], range: NSMakeRange(0, string.count))
+
+  if let match = paramMatches.first {
+    if match.numberOfRanges >= 2 {
+      let functionName = string.prefix(upTo: string.firstIndex(of: "(")!)
+      let openParen = (string as NSString).substring(with: match.range(at: 1))
+      let contents = (string as NSString).substring(with: match.range(at: 2))
+      let functionEnd = (string as NSString).substring(with: match.range(at: 3)).replacingOccurrences(of: " ", with: "")
+
+      let withoutDefaultValues = contents.replacingOccurrences(
+        of: #"=.*?,"#,
+        with: ",",
+        options: .regularExpression
+      )
+      let withoutLastDefaultValue = withoutDefaultValues.replacingOccurrences(
+        of: #"= .+$"#,
+        with: "",
+        options: .regularExpression
+      )
+      let tempResult = withoutLastDefaultValue.trimmingCharacters(in: CharacterSet.whitespaces).replacingOccurrences(
+        of: #" ,"#,
+        with: #","#,
+        options: .regularExpression
+      )
+			var parts = tempResult.components(separatedBy: "@escaping")
+			if !parts.isEmpty {
+				let paramsOnNewLine = (parts.first ?? "").replacingOccurrences(of: ",", with: ",\n")
+					parts[0] = paramsOnNewLine
+			}
+      let resultString = parts.joined(separator: "@escaping")
+      returnValue = "\(functionName)\(openParen)\(resultString)\(functionEnd)"
+    }
+  }
+  return returnValue
+}
+%>
+import Foundation
+import AEPCore
+import AEPIdentity
+import AEPLifecycle
+import AEPSignal
+import AEPServices
+<%_ 
+   for type in types.all { 
+      if type.accessLevel == "public"  {
+      let interfaceName = "\(type.localName)Interface"
+      let protoName = "\(type.localName)Protocol"
+-%>
+
+// MARK: <%=  protoName %> , based on <%= type.localName %>
+
+public protocol <%= protoName %> {
+// MARK - variables
+<%_ 
+		for p in type.variables { 
+		   if p.accessLevel.read == .public { -%>
+  <% if p.isStatic { -%>static <%_ } -%> var <%=  p.name %>: <%= p.typeName %> { get <%_ if p.isMutable { -%> set<%_ } -%> }
+<%_    }
+		}
+-%>
+// MARK - functions
+    <%_ 
+		for m in type.methods { 
+	   if m.accessLevel == "public" && 
+			  !m.isInitializer &&
+			  !m.isDeinitializer &&
+				!m.isFailableInitializer &&  
+				!m.isConvenienceInitializer &&
+				!m.isRequired && 
+				!m.name.hasPrefix("init") {
+		print(" \(m.isStatic ? "static" : "" ) func \(sanitize(m.name)) -> \(m.actualReturnTypeName)")
+				}
+		}
+			-%>
+}
+// end generated protocol
+
+extension <%= type.localName %>: <%= protoName %>	{ } 
+
+	<%_ } -%> 
+<%_ } -%> 
+
